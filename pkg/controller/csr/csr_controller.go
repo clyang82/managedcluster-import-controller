@@ -9,6 +9,7 @@ import (
 
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/stolostron/managedcluster-import-controller/pkg/helpers"
+	agentv1 "open-cluster-management.io/api/agent/v1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 
 	certificatesv1 "k8s.io/api/certificates/v1"
@@ -118,18 +119,38 @@ func (r *ReconcileCSR) Reconcile(ctx context.Context, request reconcile.Request)
 		// create a new cluster if it doesn't exist
 		newCluster := cluster.DeepCopy()
 		newCluster.Name = clusterID
-		err = r.clientHolder.RuntimeClient.Delete(ctx, &cluster, &client.DeleteOptions{})
-		if err != nil {
-			return reconcile.Result{}, err
-		}
+		newCluster.ResourceVersion = ""
 		err = r.clientHolder.RuntimeClient.Create(ctx, newCluster, &client.CreateOptions{})
 		if err != nil {
 			return reconcile.Result{}, err
 		}
+
 		// create a new cluster namespace if it doesn't exist
 		newClusterNamespace := corev1.Namespace{}
 		newClusterNamespace.Name = clusterID
 		err = r.clientHolder.RuntimeClient.Create(ctx, &newClusterNamespace, &client.CreateOptions{})
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		// create KlusterletAddonConfig
+		addonConfig := agentv1.KlusterletAddonConfig{}
+		err = r.clientHolder.RuntimeClient.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: clusterName}, &addonConfig)
+		if errors.IsNotFound(err) {
+			// no managed cluster, do nothing.
+			return reconcile.Result{}, nil
+		}
+		newAddonConfig := addonConfig.DeepCopy()
+		newAddonConfig.Name = clusterID
+		newAddonConfig.ResourceVersion = ""
+		newAddonConfig.Namespace = clusterID
+		newAddonConfig.Spec.ClusterName = clusterID
+		newAddonConfig.Spec.ClusterNamespace = clusterID
+		err = r.clientHolder.RuntimeClient.Create(ctx, newAddonConfig, &client.CreateOptions{})
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		err = r.clientHolder.RuntimeClient.Delete(ctx, &cluster, &client.DeleteOptions{})
 		if err != nil {
 			return reconcile.Result{}, err
 		}
