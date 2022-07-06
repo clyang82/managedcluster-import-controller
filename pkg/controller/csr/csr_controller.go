@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	"sigs.k8s.io/controller-runtime/pkg/client/options"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -24,6 +25,7 @@ import (
 const (
 	userNameSignature = "system:serviceaccount:%s:%s-bootstrap-sa"
 	clusterLabel      = "open-cluster-management.io/cluster-name"
+	clusterIDLabel    = "open-cluster-management.io/cluster-id"
 )
 
 var log = logf.Log.WithName("controller_csr")
@@ -35,6 +37,15 @@ func getClusterName(csr *certificatesv1.CertificateSigningRequest) (clusterName 
 		}
 	}
 	return clusterName
+}
+
+func getClusterID(csr *certificatesv1.CertificateSigningRequest) (clusterID string) {
+	for label, v := range csr.GetObjectMeta().GetLabels() {
+		if label == clusterIDLabel {
+			clusterID = v
+		}
+	}
+	return clusterID
 }
 
 func getApprovalType(csr *certificatesv1.CertificateSigningRequest) string {
@@ -100,6 +111,28 @@ func (r *ReconcileCSR) Reconcile(ctx context.Context, request reconcile.Request)
 	}
 	if err != nil {
 		return reconcile.Result{}, err
+	}
+
+	clusterID := getClusterID(csr)
+	if clusterID != "" {
+		// create a new cluster if it doesn't exist
+		newCluster := cluster.DeepCopy()
+		newCluster.Name = clusterID
+		err = r.clientHolder.RuntimeClient.Delete(ctx, &cluster, options.DeleteOption{})
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		err = r.clientHolder.RuntimeClient.Create(ctx, newCluster, options.CreateOptions{})
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		// create a new cluster namespace if it doesn't exist
+		newClusterNamespace := corev1.Namespace{}
+		newClusterNamespace.Name = clusterID
+		err = r.clientHolder.RuntimeClient.Create(ctx, &newClusterNamespace, options.CreateOptions{})
+		if err != nil {
+			return reconcile.Result{}, err
+		}
 	}
 
 	reqLogger.Info("Approving CSR")
