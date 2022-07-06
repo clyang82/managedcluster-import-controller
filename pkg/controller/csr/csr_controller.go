@@ -17,7 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	"sigs.k8s.io/controller-runtime/pkg/client/options"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -118,18 +118,18 @@ func (r *ReconcileCSR) Reconcile(ctx context.Context, request reconcile.Request)
 		// create a new cluster if it doesn't exist
 		newCluster := cluster.DeepCopy()
 		newCluster.Name = clusterID
-		err = r.clientHolder.RuntimeClient.Delete(ctx, &cluster, options.DeleteOption{})
+		err = r.clientHolder.RuntimeClient.Delete(ctx, &cluster, &client.DeleteOptions{})
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		err = r.clientHolder.RuntimeClient.Create(ctx, newCluster, options.CreateOptions{})
+		err = r.clientHolder.RuntimeClient.Create(ctx, newCluster, &client.CreateOptions{})
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 		// create a new cluster namespace if it doesn't exist
 		newClusterNamespace := corev1.Namespace{}
 		newClusterNamespace.Name = clusterID
-		err = r.clientHolder.RuntimeClient.Create(ctx, &newClusterNamespace, options.CreateOptions{})
+		err = r.clientHolder.RuntimeClient.Create(ctx, &newClusterNamespace, &client.CreateOptions{})
 		if err != nil {
 			return reconcile.Result{}, err
 		}
